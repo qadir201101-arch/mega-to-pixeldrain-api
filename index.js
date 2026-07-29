@@ -61,7 +61,7 @@ app.post('/transfer', async (req, res) => {
         let uploadedIds = [];
         let fileCount = 1;
         
-        for (const file of filesToDownload) {
+        async function processFile(file) {
             const lowerName = file.name.toLowerCase();
             let isSpam = false;
             
@@ -74,17 +74,15 @@ app.post('/transfer', async (req, res) => {
             
             if (isSpam) {
                 console.log(`Skipping spam: ${file.name}`);
-                continue;
+                return null;
             }
             
             const ext = path.extname(file.name);
-            const newName = `onlymegalover.com_${fileCount}${ext}`;
-            fileCount++;
-            
+            const currentFileCount = fileCount++;
+            const newName = `onlymegalovers.com_${currentFileCount}${ext}`;
             console.log(`Streaming directly from Mega to Pixeldrain: ${newName}`);
             
             try {
-                // Pipe stream directly (Zero disk space used, instant transfer)
                 const stream = file.download();
                 const form = new FormData();
                 form.append('file', stream, { filename: newName, knownLength: file.size });
@@ -97,11 +95,22 @@ app.post('/transfer', async (req, res) => {
                 });
                 
                 if (uploadResponse.status === 201) {
-                    uploadedIds.push(uploadResponse.data.id);
                     console.log(`Successfully uploaded: ${uploadResponse.data.id}`);
+                    return uploadResponse.data.id;
                 }
             } catch (err) {
                 console.error(`Failed to upload ${newName}:`, err.message);
+            }
+            return null;
+        }
+
+        // Process files in PARALLEL (4 at a time) for massive speed boost!
+        const CONCURRENCY = 4;
+        for (let i = 0; i < filesToDownload.length; i += CONCURRENCY) {
+            const chunk = filesToDownload.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(chunk.map(file => processFile(file)));
+            for (const id of results) {
+                if (id) uploadedIds.push(id);
             }
         }
         
@@ -112,8 +121,10 @@ app.post('/transfer', async (req, res) => {
             return res.end();
         }
         
+        const postTitle = req.body.post_title;
+        const folderTitle = postTitle || megaObj.name || "onlymegalover.com";
         const listResponse = await axios.post('https://pixeldrain.com/api/list', {
-            title: "onlymegalover.com",
+            title: folderTitle,
             anonymous: false,
             files: uploadedIds.map(id => ({ id }))
         }, {
