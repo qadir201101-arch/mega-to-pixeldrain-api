@@ -5,6 +5,8 @@ const axios = require('axios');
 const FormData = require('form-data');
 const path = require('path');
 
+const API_KEY = '27582c8d-92da-4cd9-b014-c30db0e905be';
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -89,6 +91,7 @@ app.post('/transfer', async (req, res) => {
                 
                 const uploadResponse = await axios.post('https://pixeldrain.com/api/file', form, {
                     headers: form.getHeaders(),
+                    auth: { username: '', password: API_KEY },
                     maxBodyLength: Infinity,
                     maxContentLength: Infinity
                 });
@@ -111,8 +114,10 @@ app.post('/transfer', async (req, res) => {
         
         const listResponse = await axios.post('https://pixeldrain.com/api/list', {
             title: "onlymegalover.com",
-            anonymous: true,
+            anonymous: false,
             files: uploadedIds.map(id => ({ id }))
+        }, {
+            auth: { username: '', password: API_KEY }
         });
         
         if (listResponse.status === 201) {
