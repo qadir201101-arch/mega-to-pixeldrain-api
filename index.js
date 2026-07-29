@@ -210,6 +210,19 @@ async function handleGofileTransfer(megaObj, postTitle, res, keepAlive) {
         const mainFolderId = mainFolder.id;
         const mainFolderCode = mainFolder.code;
         
+        // Make the main folder public so viewers can access it without issues
+        try {
+            await axios.put(`https://api.gofile.io/contents/${mainFolderId}/update`, {
+                attribute: "public",
+                attributeValue: "true"
+            }, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            console.log("Main folder set to public.");
+        } catch (err) {
+            console.error("Warning: Failed to set folder to public", err.message);
+        }
+        
         // Start traversing Mega tree
         await mapMegaToGofile(megaObj, mainFolderId, token, server);
         
