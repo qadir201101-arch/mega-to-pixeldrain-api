@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { File } = require('megajs');
 const axios = require('axios');
+const FormData = require('form-data');
 const path = require('path');
 
 const app = express();
@@ -83,9 +84,11 @@ app.post('/transfer', async (req, res) => {
             try {
                 // Pipe stream directly (Zero disk space used, instant transfer)
                 const stream = file.download();
+                const form = new FormData();
+                form.append('file', stream, { filename: newName, knownLength: file.size });
                 
-                const uploadResponse = await axios.put(`https://pixeldrain.com/api/file/${encodeURIComponent(newName)}`, stream, {
-                    headers: { 'Content-Type': 'application/octet-stream' },
+                const uploadResponse = await axios.post('https://pixeldrain.com/api/file', form, {
+                    headers: form.getHeaders(),
                     maxBodyLength: Infinity,
                     maxContentLength: Infinity
                 });
