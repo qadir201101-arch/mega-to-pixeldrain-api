@@ -2,10 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { File } = require('megajs');
 const axios = require('axios');
-const FormData = require('form-data');
-const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const app = express();
 app.use(cors());
@@ -31,9 +28,21 @@ function getAllFiles(node) {
 }
 
 app.post('/transfer', async (req, res) => {
+    // 🚀 Bypassing Render's 100-second idle timeout
+    // We send a space character every 10 seconds. This keeps the connection active.
+    // The browser's res.json() will just ignore leading whitespace and parse the final JSON.
+    res.setHeader('Content-Type', 'application/json');
+    const keepAlive = setInterval(() => {
+        res.write(' ');
+    }, 10000);
+
     try {
         const url = req.body.mega_url;
-        if (!url) return res.status(400).json({ success: false, error: "No URL provided" });
+        if (!url) {
+            clearInterval(keepAlive);
+            res.write(JSON.stringify({ success: false, error: "No URL provided" }));
+            return res.end();
+        }
         
         console.log(`Starting transfer for: ${url}`);
         const megaObj = File.fromURL(url);
@@ -69,25 +78,14 @@ app.post('/transfer', async (req, res) => {
             const newName = `onlymegalover.com_${fileCount}${ext}`;
             fileCount++;
             
-            console.log(`Downloading: ${newName}`);
-            const tempPath = path.join(os.tmpdir(), newName);
-            
-            const stream = file.download();
-            const writeStream = fs.createWriteStream(tempPath);
-            await new Promise((resolve, reject) => {
-                stream.pipe(writeStream);
-                stream.on('end', resolve);
-                stream.on('error', reject);
-                writeStream.on('error', reject);
-            });
-            
-            console.log(`Uploading: ${newName}`);
-            const form = new FormData();
-            form.append('file', fs.createReadStream(tempPath));
+            console.log(`Streaming directly from Mega to Pixeldrain: ${newName}`);
             
             try {
-                const uploadResponse = await axios.post('https://pixeldrain.com/api/file', form, {
-                    headers: form.getHeaders(),
+                // Pipe stream directly (Zero disk space used, instant transfer)
+                const stream = file.download();
+                
+                const uploadResponse = await axios.put(`https://pixeldrain.com/api/file/${encodeURIComponent(newName)}`, stream, {
+                    headers: { 'Content-Type': 'application/octet-stream' },
                     maxBodyLength: Infinity,
                     maxContentLength: Infinity
                 });
@@ -99,14 +97,13 @@ app.post('/transfer', async (req, res) => {
             } catch (err) {
                 console.error(`Failed to upload ${newName}:`, err.message);
             }
-            
-            try {
-                fs.unlinkSync(tempPath);
-            } catch(e) {}
         }
         
+        clearInterval(keepAlive);
+        
         if (uploadedIds.length === 0) {
-            return res.json({ success: false, error: "No valid files found to upload" });
+            res.write(JSON.stringify({ success: false, error: "No valid files found to upload" }));
+            return res.end();
         }
         
         const listResponse = await axios.post('https://pixeldrain.com/api/list', {
@@ -116,14 +113,17 @@ app.post('/transfer', async (req, res) => {
         });
         
         if (listResponse.status === 201) {
-            return res.json({ success: true, pixeldrain_url: `https://pixeldrain.com/l/${listResponse.data.id}`, files_uploaded: uploadedIds.length });
+            res.write(JSON.stringify({ success: true, pixeldrain_url: `https://pixeldrain.com/l/${listResponse.data.id}`, files_uploaded: uploadedIds.length }));
         } else {
-            return res.json({ success: true, pixeldrain_url: `https://pixeldrain.com/u/${uploadedIds[0]}`, files_uploaded: uploadedIds.length });
+            res.write(JSON.stringify({ success: true, pixeldrain_url: `https://pixeldrain.com/u/${uploadedIds[0]}`, files_uploaded: uploadedIds.length }));
         }
+        res.end();
         
     } catch (error) {
+        clearInterval(keepAlive);
         console.error(error);
-        return res.json({ success: false, error: error.message });
+        res.write(JSON.stringify({ success: false, error: error.message }));
+        res.end();
     }
 });
 
