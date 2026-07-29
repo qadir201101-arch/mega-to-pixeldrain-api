@@ -143,8 +143,9 @@ async function createGofileFolder(parentFolderId, folderName, token) {
 
 async function uploadToGofile(stream, filename, size, folderId, token, server) {
     const form = new FormData();
-    form.append('file', stream, { filename: filename, knownLength: size });
+    form.append('token', token);
     form.append('folderId', folderId);
+    form.append('file', stream, { filename: filename, knownLength: size });
     
     const uploadRes = await axios.post(`https://${server}.gofile.io/contents/uploadfile`, form, {
         headers: {
@@ -178,15 +179,27 @@ async function mapMegaToGofile(megaNode, gofileParentId, token, server) {
     }
     
     // Upload files in the current folder concurrently
-    for (let i = 0; i < filesInCurrentNode.length; i += CONCURRENCY) {
-        const chunk = filesInCurrentNode.slice(i, i + CONCURRENCY);
+    const CONCURRENCY_GOFILE = 2; // Reduced to prevent rate limits
+    for (let i = 0; i < filesInCurrentNode.length; i += CONCURRENCY_GOFILE) {
+        const chunk = filesInCurrentNode.slice(i, i + CONCURRENCY_GOFILE);
         const promises = chunk.map(async (file) => {
             const cleanName = cleanFileName(file.name);
             console.log(`Streaming to Gofile: ${cleanName}`);
-            try {
-                await uploadToGofile(file.download(), cleanName, file.size, gofileParentId, token, server);
-            } catch(e) {
-                console.error(`Failed Gofile upload for ${cleanName}:`, e.message);
+            let retries = 3;
+            while (retries > 0) {
+                try {
+                    await uploadToGofile(file.download(), cleanName, file.size, gofileParentId, token, server);
+                    console.log(`Successfully uploaded to Gofile: ${cleanName}`);
+                    break;
+                } catch(e) {
+                    retries--;
+                    console.error(`Failed Gofile upload for ${cleanName} (${3-retries}/3):`, e.message);
+                    if (retries === 0) {
+                        console.error(`Giving up on ${cleanName}`);
+                    } else {
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+                }
             }
         });
         await Promise.all(promises);
