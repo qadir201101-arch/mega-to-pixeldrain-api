@@ -12,17 +12,22 @@ app.use(cors());
 app.use(express.json());
 
 const SPAM_KEYWORDS = [
-    "@onlyfansversedrops", "[telegram]", "joinournetwork", "replacement_image", "t.me"
+    "telegram", "joinournetwork", "replacement_image", "t.me"
+];
+const PROMO_KEYWORDS = [
+    "@onlyfansversedrops", "of verses"
 ];
 const INVALID_EXTS = [".txt", ".url", ".html", ".exe", ".bat"];
 
-function getAllFiles(node) {
+function getAllFiles(node, currentPath = "") {
     let files = [];
     if (node.children) {
         for (const child of node.children) {
             if (child.directory) {
-                files = files.concat(getAllFiles(child));
+                const newPath = currentPath ? `${currentPath} - ${child.name}` : child.name;
+                files = files.concat(getAllFiles(child, newPath));
             } else {
+                child.customPathName = currentPath ? `${currentPath} - ${child.name}` : child.name;
                 files.push(child);
             }
         }
@@ -59,7 +64,6 @@ app.post('/transfer', async (req, res) => {
         }
         
         let uploadedIds = [];
-        let fileCount = 1;
         
         async function processFile(file) {
             const lowerName = file.name.toLowerCase();
@@ -77,9 +81,14 @@ app.post('/transfer', async (req, res) => {
                 return null;
             }
             
-            const ext = path.extname(file.name);
-            const currentFileCount = fileCount++;
-            const newName = `onlymegalovers.com_${currentFileCount}${ext}`;
+            let newName = file.customPathName || file.name;
+            
+            // Replace promotional names with your website name
+            for (const promo of PROMO_KEYWORDS) {
+                const regex = new RegExp(promo, "gi");
+                newName = newName.replace(regex, "onlymegalovers.com");
+            }
+            
             console.log(`Streaming directly from Mega to Pixeldrain: ${newName}`);
             
             try {
